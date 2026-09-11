@@ -1,0 +1,10 @@
+# 登录态镜像文件（含 accessToken，严禁提交！）
+adapters/.auth-info.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+venv/
+.venv/

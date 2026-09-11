@@ -1,0 +1,47 @@
+name: WorkBuddy 每日签到
+
+on:
+  schedule:
+    # 每天北京时间 09:00 触发（UTC 01:00）
+    - cron: '0 1 * * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 同步登录态（从 GitHub Secrets 恢复）
+        env:
+          AUTH_INFO: ${{ secrets.WORKBUDDY_AUTH_INFO }}
+        run: |
+          if [ -z "$AUTH_INFO" ]; then
+            echo "⚠️  WORKBUDDY_AUTH_INFO 未配置，尝试使用镜像文件..."
+          else
+            mkdir -p adapters
+            echo "$AUTH_INFO" > adapters/.auth-info.json
+            chmod 600 adapters/.auth-info.json
+            echo "✅ 登录态已恢复"
+          fi
+
+      - name: 执行签到
+        env:
+          SERVERCHAN_SCKEY: ${{ secrets.SERVERCHAN_SCKEY }}
+          BARK_URL: ${{ secrets.BARK_URL }}
+          NOTIFY_WEBHOOK: ${{ secrets.NOTIFY_WEBHOOK }}
+        run: |
+          python run_local.py
+
+      - name: 上传日志（失败时便于排查）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkin-log
+          path: ~/.actions-runner/_diag/
