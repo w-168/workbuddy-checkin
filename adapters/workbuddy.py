@@ -35,7 +35,7 @@ TIMEOUT = 25
 USER_AGENT = "WorkBuddy/5.4.4"
 
 # 登录态源文件（从客户端安装包逆向所得路径）
-AUTH_SRC_WIN = r"C:\Users\<用户名>\AppData\Local\CodeBuddyExtension\Data/Public\auth\workbuddy-desktop.info"
+AUTH_SRC_WIN = r"C:\Users\<用户名>\AppData\Local\CodeBuddyExtension\Data\Public\auth\workbuddy-desktop.info"
 # 镜像副本（由 sync_auth 生成，供沙箱/云端读取）
 AUTH_MIRROR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".auth-info.json")
 
