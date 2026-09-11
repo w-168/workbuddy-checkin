@@ -8,3 +8,9 @@ __pycache__/
 dist/
 venv/
 .venv/
+
+# 工作空间元数据（WorkBuddy）
+.workbuddy/
+
+# 本地仓库镜像备份
+checkin_mirror_backup.git/
