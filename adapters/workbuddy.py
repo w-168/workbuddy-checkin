@@ -12,8 +12,10 @@
   返回 code=0   → 签到成功（附 credit / streak_days）
   返回 code=10001 + msg="今天已签到" → 今日已领，幂等跳过
 
-登录态文件路径（Windows）：
-  C:/Users/<username>/AppData/Local/CodeBuddyExtension/Data/Public/auth/workbuddy-desktop.info
+登录态来源（按运行环境自动选择）：
+  CI / GitHub Actions : 仅读取由 Secret 注入的镜像文件，绝不访问任何本机路径
+                        （无需电脑开机，token 由 WORKBUDDY_AUTH_INFO 提供）
+  本地 Windows        : 读取桌面客户端登录态文件，或 sync_auth.py 生成的镜像副本
 """
 from __future__ import annotations
 
@@ -34,15 +36,35 @@ STATUS_PATH = "/v2/billing/meter/checkin-activity-status"
 TIMEOUT = 25
 USER_AGENT = "WorkBuddy/5.4.4"
 
-# 登录态源文件（从客户端安装包逆向所得路径）
-AUTH_SRC_WIN = r"C:\Users\<用户名>\AppData\Local\CodeBuddyExtension\Data\Public\auth\workbuddy-desktop.info"
-# 镜像副本（由 sync_auth 生成，供沙箱/云端读取）
+def _in_ci() -> bool:
+    """是否运行在 CI 环境（GitHub Actions / 通用 CI）。"""
+    return (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        or os.environ.get("CI") == "true"
+    )
+
+
+# 登录态源文件（桌面客户端）。动态拼接，避免在公开仓库中硬编码 Windows 用户名。
+AUTH_SRC_WIN = os.path.join(
+    os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local"),
+    "CodeBuddyExtension", "Data", "Public", "auth", "workbuddy-desktop.info",
+)
+# 镜像副本：本地由 sync_auth.py 生成；CI 上由 GitHub Secret 注入
 AUTH_MIRROR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".auth-info.json")
+
+
+def _auth_candidates() -> list[str]:
+    """按运行环境返回登录态候选路径（按优先级排序）。"""
+    if _in_ci():
+        # CI 环境只认 Secret 注入的登录态，完全不读取本机客户端文件，
+        # 因此不需要本机开机，也不依赖个人电脑上的任何文件。
+        return [AUTH_MIRROR]
+    return [AUTH_SRC_WIN, AUTH_MIRROR]
 
 
 def _load_auth() -> tuple[str, str, str]:
     """返回 (accessToken, uid, domain)。"""
-    candidates = [AUTH_SRC_WIN, AUTH_MIRROR]
+    candidates = _auth_candidates()
     for path in candidates:
         if os.path.exists(path):
             try:
@@ -58,6 +80,13 @@ def _load_auth() -> tuple[str, str, str]:
                     return token, uid, domain
             except Exception as e:
                 logger.warning("登录态文件读取失败 %s: %s", path, e)
+    if _in_ci():
+        raise RuntimeError(
+            "登录态不可用！\n"
+            "当前运行在 CI 环境，仅使用 GitHub Secret 注入的登录态。\n"
+            "请检查仓库 Secret WORKBUDDY_AUTH_INFO 是否已配置且 JSON 格式正确\n"
+            "（需包含 auth.accessToken 与 account.uid 字段）。"
+        )
     raise RuntimeError(
         "登录态不可用！\n"
         "请确保 WorkBuddy 桌面客户端已登录，且文件存在于:\n"
@@ -98,8 +127,8 @@ class WorkBuddyAdapter(BaseAdapter):
     name = "workbuddy"
 
     def enabled(self) -> bool:
-        # 有登录态文件才启用
-        return os.path.exists(AUTH_SRC_WIN) or os.path.exists(AUTH_MIRROR)
+        # 有登录态文件才启用（CI 下只判断 Secret 注入的镜像文件）
+        return any(os.path.exists(p) for p in _auth_candidates())
 
     def checkin(self) -> CheckinResult:
         try:

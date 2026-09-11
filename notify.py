@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from urllib import error, request
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,12 @@ def send_serverchan(sckey: str, title: str, text: str) -> None:
 
 
 def send_bark(bark_url: str, title: str, text: str) -> None:
-    url = f"{bark_url.rstrip('/')}/{title}/{text}"
+    # 报告含换行与中文，必须做 URL 编码，否则会拼出非法 URL 导致推送静默失败
+    url = "{}/{}/{}".format(
+        bark_url.rstrip("/"),
+        quote(title, safe=""),
+        quote(text, safe=""),
+    )
     try:
         with request.urlopen(request.Request(url), timeout=15) as resp:
             logger.info("Bark 推送状态: %s", resp.status)

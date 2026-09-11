@@ -11,7 +11,11 @@ import os
 import shutil
 import sys
 
-AUTH_SRC = r"C:\Users\<用户名>\AppData\Local\CodeBuddyExtension\Data\Public\auth\workbuddy-desktop.info"
+# 动态拼接，避免在公开仓库中硬编码 Windows 用户名
+AUTH_SRC = os.path.join(
+    os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local"),
+    "CodeBuddyExtension", "Data", "Public", "auth", "workbuddy-desktop.info",
+)
 AUTH_MIRROR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adapters", ".auth-info.json")
 
 

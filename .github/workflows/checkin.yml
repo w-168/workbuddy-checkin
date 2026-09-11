@@ -3,8 +3,15 @@ name: WorkBuddy 每日签到
 on:
   schedule:
     # 每天北京时间 09:00 触发（UTC 01:00）
+    # 注意：GitHub 不保证准时，实际通常延迟 5~30 分钟
     - cron: '0 1 * * *'
   workflow_dispatch:  # 允许手动触发
+
+  # 推送即跑一次，方便立刻验证配置是否正确。
+  # 签到接口幂等（当天重复调用会返回"今天已签到"），所以不会重复领积分。
+  # 若不想每次推送都跑，删掉下面三行即可。
+  push:
+    branches: [main]
 
 jobs:
   checkin:
@@ -18,18 +25,26 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 同步登录态（从 GitHub Secrets 恢复）
+      # 登录态完全来自 GitHub Secret，不访问任何本机/个人电脑上的文件，
+      # 因此电脑关机、不开机都不影响定时任务执行。
+      - name: 恢复登录态（仅使用 GitHub Secret）
         env:
           AUTH_INFO: ${{ secrets.WORKBUDDY_AUTH_INFO }}
         run: |
-          if [ -z "$AUTH_INFO" ]; then
-            echo "⚠️  WORKBUDDY_AUTH_INFO 未配置，尝试使用镜像文件..."
-          else
-            mkdir -p adapters
-            echo "$AUTH_INFO" > adapters/.auth-info.json
-            chmod 600 adapters/.auth-info.json
-            echo "✅ 登录态已恢复"
+          set -euo pipefail
+
+          if [ -z "${AUTH_INFO:-}" ]; then
+            echo "::error::未配置 Secret WORKBUDDY_AUTH_INFO，无法签到"
+            echo "请到 Settings -> Secrets and variables -> Actions 添加该 Secret"
+            exit 1
           fi
+
+          mkdir -p adapters
+          printf '%s' "$AUTH_INFO" > adapters/.auth-info.json
+          chmod 600 adapters/.auth-info.json
+
+          # 校验 JSON 合法且含必需字段，避免 Secret 粘错时静默失败
+          python check_auth.py adapters/.auth-info.json
 
       - name: 执行签到
         env:
@@ -37,11 +52,17 @@ jobs:
           BARK_URL: ${{ secrets.BARK_URL }}
           NOTIFY_WEBHOOK: ${{ secrets.NOTIFY_WEBHOOK }}
         run: |
-          python run_local.py
+          set -o pipefail
+          # tee 会吞掉退出码，用 PIPESTATUS[0] 取回 python 的真实结果，
+          # 保证签到失败时本步骤（以及整个 workflow）判定为失败
+          python run_local.py 2>&1 | tee checkin.log
+          exit "${PIPESTATUS[0]}"
 
-      - name: 上传日志（失败时便于排查）
-        if: failure()
+      - name: 上传日志
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: checkin-log
-          path: ~/.actions-runner/_diag/
+          path: checkin.log
+          if-no-files-found: warn
+          retention-days: 7
