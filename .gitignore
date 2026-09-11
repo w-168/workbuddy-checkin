@@ -14,3 +14,7 @@ venv/
 
 # 本地仓库镜像备份
 checkin_mirror_backup.git/
+
+# 本地运维脚本：手动触发云端 CI / 拉取运行日志，仅本地使用，不入库
+trigger_workflow.py
+fetch_run_logs.py
